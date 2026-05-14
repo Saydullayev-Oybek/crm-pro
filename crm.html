@@ -114,12 +114,12 @@
 </head>
 <body>
 
-<div id="db-status">&#9679; PostgreSQL</div>
+<div id="db-status">&#9679; Google Sheets</div>
 <button id="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <div id="sidebar">
-  <div class="sidebar-logo">&#128200; CRM Pro<span>PostgreSQL backend</span></div>
+  <div class="sidebar-logo">&#128200; CRM Pro<span>Google Sheets backend</span></div>
   <nav>
     <div class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon">&#127968;</span> Dashboard</div>
     <div class="nav-item" onclick="showPage('customers')"><span class="nav-icon">&#128101;</span> Mijozlar</div>
@@ -127,7 +127,7 @@
     <div class="nav-item" onclick="showPage('sell')"><span class="nav-icon">&#128179;</span> Sotish</div>
     <div class="nav-item" onclick="showPage('history')"><span class="nav-icon">&#128203;</span> Tarix</div>
   </nav>
-  <div class="sidebar-footer">&#169; 2026 CRM Pro &mdash; PostgreSQL</div>
+  <div class="sidebar-footer">&#169; 2026 CRM Pro &mdash; Google Sheets</div>
 </div>
 
 <div id="main">
@@ -244,31 +244,34 @@
 <div id="toast"></div>
 
 <script>
-const API = 'http://localhost:3000/api';
+// Apps Script URL — deploy qilgandan keyin shu yerga joylashtiring
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzZ7i5q7pL1sV4AI0cfqWUYWDtkPQh8oz12PjdmagboQJnqD_jXNWNwY1gn2XnF9i1EhA/exec';
+
 let allProducts = [];
 let editCustomerId = null;
 let editProductId  = null;
 
 // ─── API helper ───────────────────────────────────────────────────────────────
-async function api(method, url, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API + url, opts);
+async function api(action, params = {}) {
+  const res = await fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action, ...params }),
+  });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Xato');
-  return data;
+  if (!data.ok) throw new Error(data.error || 'Xato');
+  return data.result;
 }
 
-// ─── DB holat tekshirish ──────────────────────────────────────────────────────
+// ─── Ulanish holati ───────────────────────────────────────────────────────────
 async function checkDB() {
   try {
-    await api('GET', '/stats');
+    await api('stats');
     const el = document.getElementById('db-status');
-    el.innerHTML = '&#9679; PostgreSQL — ulangan';
+    el.innerHTML = '&#9679; Google Sheets — ulangan';
     el.className = '';
   } catch {
     const el = document.getElementById('db-status');
-    el.innerHTML = '&#9679; DB ulanmagan';
+    el.innerHTML = '&#9679; Ulanmadi';
     el.className = 'err';
   }
 }
@@ -327,7 +330,7 @@ function fmt(n) { return Number(n).toLocaleString('uz-UZ') + ' so\'m'; }
 // ═══════════════════════════════════════════════════════════════════════════════
 async function renderDashboard() {
   try {
-    const [stats, sales] = await Promise.all([api('GET','/stats'), api('GET','/sales')]);
+    const [stats, sales] = await Promise.all([api('stats'), api('sales.list')]);
     document.getElementById('dash-customers').textContent = stats.customers;
     document.getElementById('dash-products').textContent  = stats.products;
     document.getElementById('dash-sales').textContent     = stats.sales;
@@ -353,7 +356,7 @@ async function renderCustomers(q = '') {
   const tbody = document.getElementById('customers-tbody');
   tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><span class="spinner"></span> Yuklanmoqda...</td></tr>';
   try {
-    const list = await api('GET', '/customers' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+    const list = await api('customers.list', q ? { q } : {});
     tbody.innerHTML = list.length
       ? list.map((c, i) => `<tr>
           <td>${i+1}</td>
@@ -395,10 +398,10 @@ async function saveCustomer() {
   if (!body.name || !body.phone) { toast('Ism va telefon majburiy!', 'danger'); return; }
   try {
     if (editCustomerId) {
-      await api('PUT', `/customers/${editCustomerId}`, body);
+      await api('customers.update', { id: editCustomerId, ...body });
       toast('Mijoz yangilandi', 'success');
     } else {
-      await api('POST', '/customers', body);
+      await api('customers.create', body);
       toast('Mijoz qo\'shildi', 'success');
     }
     closeModal('modal-customer'); renderCustomers();
@@ -406,7 +409,7 @@ async function saveCustomer() {
 }
 async function deleteCustomer(id) {
   if (!confirm('Mijozni o\'chirishni tasdiqlaysizmi?')) return;
-  try { await api('DELETE', `/customers/${id}`); toast('Mijoz o\'chirildi', 'danger'); renderCustomers(); }
+  try { await api('customers.delete', { id }); toast('Mijoz o\'chirildi', 'danger'); renderCustomers(); }
   catch(e) { toast(e.message, 'danger'); }
 }
 
@@ -417,7 +420,7 @@ async function renderProducts(q = '') {
   const tbody = document.getElementById('products-tbody');
   tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><span class="spinner"></span> Yuklanmoqda...</td></tr>';
   try {
-    const list = await api('GET', '/products' + (q ? `?q=${encodeURIComponent(q)}` : ''));
+    const list = await api('products.list', q ? { q } : {});
     allProducts = list;
     tbody.innerHTML = list.length
       ? list.map((p, i) => `<tr>
@@ -461,10 +464,10 @@ async function saveProduct() {
   if (!body.name || isNaN(body.price) || isNaN(body.qty)) { toast('Barcha maydonlar to\'ldirilishi kerak!', 'danger'); return; }
   try {
     if (editProductId) {
-      await api('PUT', `/products/${editProductId}`, body);
+      await api('products.update', { id: editProductId, ...body });
       toast('Mahsulot yangilandi', 'success');
     } else {
-      await api('POST', '/products', body);
+      await api('products.create', body);
       toast('Mahsulot qo\'shildi', 'success');
     }
     closeModal('modal-product'); renderProducts();
@@ -472,7 +475,7 @@ async function saveProduct() {
 }
 async function deleteProduct(id) {
   if (!confirm('Mahsulotni o\'chirishni tasdiqlaysizmi?')) return;
-  try { await api('DELETE', `/products/${id}`); toast('Mahsulot o\'chirildi', 'danger'); renderProducts(); }
+  try { await api('products.delete', { id }); toast('Mahsulot o\'chirildi', 'danger'); renderProducts(); }
   catch(e) { toast(e.message, 'danger'); }
 }
 
@@ -481,7 +484,7 @@ async function deleteProduct(id) {
 // ═══════════════════════════════════════════════════════════════════════════════
 async function renderSell() {
   try {
-    const [customers, products] = await Promise.all([api('GET','/customers'), api('GET','/products')]);
+    const [customers, products] = await Promise.all([api('customers.list'), api('products.list')]);
     allProducts = products;
     const sel = document.getElementById('sell-customer');
     sel.innerHTML = '<option value="">— Mijoz tanlang —</option>' +
@@ -542,7 +545,7 @@ async function saveSale() {
   const btn = document.getElementById('sell-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saqlanmoqda...';
   try {
-    await api('POST', '/sales', { customerId: custId, items });
+    await api('sales.create', { customerId: custId, items });
     toast('Sotuv saqlandi!', 'success');
     renderSell();
   } catch(e) { toast(e.message, 'danger'); }
@@ -556,7 +559,7 @@ async function renderHistory() {
   const el = document.getElementById('history-list');
   el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;"><span class="spinner"></span> Yuklanmoqda...</div>';
   try {
-    const list = await api('GET', '/sales');
+    const list = await api('sales.list');
     if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Hali sotuvlar yo\'q</div>'; return; }
     el.innerHTML = list.map(s => `
       <div class="history-card">
@@ -699,7 +702,7 @@ function selectProductSuggestion(p) {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 checkDB();
 renderDashboard();
-api('GET','/products').then(list => { allProducts = list; }).catch(()=>{});
+api('products.list').then(list => { allProducts = list; }).catch(()=>{});
 </script>
 </body>
 </html>
