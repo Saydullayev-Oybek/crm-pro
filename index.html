@@ -6,6 +6,7 @@
 <title>CRM Pro</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg:#0f1117; --sidebar-bg:#161b27; --card-bg:#1c2233; --card2-bg:#232b3e;
@@ -110,24 +111,72 @@
   @keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
   .sidebar-overlay{display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.5);}
   .sidebar-overlay.open{display:block;}
+
+  /* Auth screen */
+  #auth-screen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;}
+  #auth-screen.hidden{display:none;}
+  .auth-card{background:var(--card-bg);border:1px solid var(--border);border-radius:20px;padding:40px 36px;width:100%;max-width:400px;}
+  .auth-logo{text-align:center;margin-bottom:28px;}
+  .auth-logo .icon{font-size:2.4rem;margin-bottom:10px;}
+  .auth-logo h1{font-size:1.5rem;font-weight:700;color:var(--accent);}
+  .auth-logo p{color:var(--text-muted);font-size:.83rem;margin-top:4px;}
+  .auth-tabs{display:flex;gap:4px;background:var(--input-bg);border-radius:10px;padding:4px;margin-bottom:24px;}
+  .auth-tab{flex:1;padding:9px;text-align:center;border-radius:7px;cursor:pointer;font-size:.88rem;font-weight:600;color:var(--text-muted);transition:all .15s;user-select:none;}
+  .auth-tab.active{background:var(--accent);color:#fff;}
+  .auth-error{color:var(--danger);font-size:.82rem;margin-top:10px;text-align:center;min-height:20px;}
+  #auth-user-info{font-size:.78rem;color:var(--text-muted);margin-bottom:10px;word-break:break-all;}
 </style>
 </head>
 <body>
 
-<div id="db-status">&#9679; Google Sheets</div>
+<!-- Auth Screen -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="icon">&#128200;</div>
+      <h1>CRM Pro</h1>
+      <p>Biznes boshqaruv tizimi</p>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Kirish</div>
+      <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Ro&#8216;yxatdan o&#8216;tish</div>
+    </div>
+    <div class="form-group">
+      <label>Telefon raqam</label>
+      <input id="auth-phone" type="tel" placeholder="+998 XX XXX XX XX" onkeydown="if(event.key==='Enter')submitAuth()">
+    </div>
+    <div class="form-group">
+      <label>Parol</label>
+      <input id="auth-password" type="password" placeholder="Kamida 6 ta belgi" onkeydown="if(event.key==='Enter')submitAuth()">
+    </div>
+    <div class="form-group" id="auth-confirm-group" style="display:none;">
+      <label>Parolni tasdiqlang</label>
+      <input id="auth-confirm" type="password" placeholder="Parolni qaytaring" onkeydown="if(event.key==='Enter')submitAuth()">
+    </div>
+    <button class="btn btn-primary" id="auth-btn" style="width:100%;padding:13px;margin-top:4px;" onclick="submitAuth()">Kirish</button>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
+
+<div id="db-status">&#9679; Supabase</div>
 <button id="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <div id="sidebar">
-  <div class="sidebar-logo">&#128200; CRM Pro<span>Google Sheets backend</span></div>
+  <div class="sidebar-logo">&#128200; CRM Pro<span>Supabase backend</span></div>
   <nav>
     <div class="nav-item active" onclick="showPage('dashboard')"><span class="nav-icon">&#127968;</span> Dashboard</div>
     <div class="nav-item" onclick="showPage('customers')"><span class="nav-icon">&#128101;</span> Mijozlar</div>
     <div class="nav-item" onclick="showPage('products')"><span class="nav-icon">&#128230;</span> Mahsulotlar</div>
     <div class="nav-item" onclick="showPage('sell')"><span class="nav-icon">&#128179;</span> Sotish</div>
     <div class="nav-item" onclick="showPage('history')"><span class="nav-icon">&#128203;</span> Tarix</div>
+    <div class="nav-item" onclick="openMigrationModal()" style="margin-top:8px;border-top:1px solid var(--border);"><span class="nav-icon">&#128260;</span> Ko'chirish</div>
   </nav>
-  <div class="sidebar-footer">&#169; 2026 CRM Pro &mdash; Google Sheets</div>
+  <div class="sidebar-footer">
+    <div id="auth-user-info"></div>
+    <button class="btn btn-danger btn-sm" style="width:100%;margin-bottom:10px;" onclick="signOut()">&#128682; Chiqish</button>
+    &#169; 2026 CRM Pro &mdash; Supabase
+  </div>
 </div>
 
 <div id="main">
@@ -230,6 +279,50 @@
   </div>
 </div>
 
+<!-- Migration Modal -->
+<div class="modal-overlay" id="modal-migration">
+  <div class="modal" style="max-width:540px;">
+    <div class="modal-title">&#128260; Google Sheets → Supabase Ko'chirish</div>
+    <div id="mig-step-1">
+      <p style="color:var(--text-muted);font-size:.88rem;margin-bottom:16px;">
+        Google Sheets dagi barcha mijozlar, mahsulotlar va sotuvlar Supabase ga ko'chiriladi.<br>
+        <strong style="color:var(--warning);">Diqqat:</strong> Mavjud Supabase ma'lumotlari o'chirilib, yangisi bilan almashtiriladi.
+      </p>
+      <div class="form-group">
+        <label>Google Apps Script URL</label>
+        <input id="mig-url" placeholder="https://script.google.com/macros/s/..." style="font-size:.78rem;">
+      </div>
+      <div id="mig-preview" style="display:none;background:var(--card2-bg);border-radius:10px;padding:14px;margin-bottom:16px;">
+        <div style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px;">Google Sheets dan topildi:</div>
+        <div id="mig-counts" style="display:flex;gap:20px;flex-wrap:wrap;"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-warning" id="mig-check-btn" onclick="migrationCheck()">&#128269; Tekshirish</button>
+        <button class="btn btn-success" id="mig-run-btn" style="display:none;" onclick="runMigration()">&#9654; Ko'chirishni boshlash</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-migration')">Bekor</button>
+      </div>
+    </div>
+    <div id="mig-step-2" style="display:none;">
+      <div id="mig-log" style="background:var(--input-bg);border-radius:8px;padding:14px;font-size:.82rem;font-family:monospace;max-height:280px;overflow-y:auto;line-height:1.8;"></div>
+      <div class="modal-actions" style="margin-top:14px;">
+        <button class="btn btn-secondary" id="mig-close-btn" style="display:none;" onclick="closeModal('modal-migration');renderDashboard()">&#10003; Yopish</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Customer History Modal -->
+<div class="modal-overlay" id="modal-customer-history">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-title" id="ch-title">Mijoz tarixi</div>
+    <div id="ch-stats" style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;"></div>
+    <div id="ch-body"></div>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-customer-history')">Yopish</button>
+    </div>
+  </div>
+</div>
+
 <!-- Items Modal -->
 <div class="modal-overlay" id="modal-items">
   <div class="modal" style="max-width:520px;">
@@ -244,16 +337,105 @@
 <div id="toast"></div>
 
 <script>
-// Apps Script URL — deploy qilgandan keyin shu yerga joylashtiring
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzZ7i5q7pL1sV4AI0cfqWUYWDtkPQh8oz12PjdmagboQJnqD_jXNWNwY1gn2XnF9i1EhA/exec';
+const SUPABASE_URL  = 'https://xeghgecmoiwshjeucrhm.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlZ2hnZWNtb2l3c2hqZXVjcmhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMDkxNjUsImV4cCI6MjA5NDc4NTE2NX0.2lOjFTMA9VgvYxxcCJVQtLe_kHtqB25z5Dv0M2FNIkI';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 let allProducts = [];
 let editCustomerId = null;
 let editProductId  = null;
+let currentAuthTab = 'login';
 
-// ─── API helper ───────────────────────────────────────────────────────────────
-async function api(action, params = {}) {
-  const res = await fetch(SCRIPT_URL, {
+// ─── Phone helper ─────────────────────────────────────────────────────────────
+function phoneToEmail(phone) {
+  const digits = phone.replace(/\D/g, '');
+  const normalized = digits.startsWith('998') ? digits : '998' + digits.replace(/^0/, '');
+  return normalized + '@crm.uz';
+}
+
+// ─── Auth UI ──────────────────────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  currentAuthTab = tab;
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+  document.getElementById('auth-confirm-group').style.display = tab === 'register' ? 'block' : 'none';
+  document.getElementById('auth-btn').textContent = tab === 'login' ? 'Kirish' : 'Ro\'yxatdan o\'tish';
+  document.getElementById('auth-error').textContent = '';
+}
+
+async function submitAuth() {
+  const phone    = document.getElementById('auth-phone').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const errEl    = document.getElementById('auth-error');
+  const btn      = document.getElementById('auth-btn');
+
+  if (!phone || !password) { errEl.textContent = 'Barcha maydonlarni to\'ldiring!'; return; }
+  if (password.length < 6)  { errEl.textContent = 'Parol kamida 6 ta belgi bo\'lishi kerak!'; return; }
+
+  const email = phoneToEmail(phone);
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Yuklanmoqda...';
+  errEl.textContent = '';
+
+  try {
+    if (currentAuthTab === 'login') {
+      const { error } = await db.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    } else {
+      const confirm = document.getElementById('auth-confirm').value;
+      if (password !== confirm) throw new Error('Parollar mos kelmadi!');
+      const { error } = await db.auth.signUp({ email, password });
+      if (error) throw error;
+      toast('Ro\'yxatdan o\'tdingiz! Endi kiring.', 'success');
+      switchAuthTab('login');
+    }
+  } catch(e) {
+    const msg = e.message.includes('Invalid login') ? 'Telefon yoki parol noto\'g\'ri!'
+              : e.message.includes('already registered') ? 'Bu telefon raqam allaqachon ro\'yxatdan o\'tgan!'
+              : e.message;
+    errEl.textContent = msg;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = currentAuthTab === 'login' ? 'Kirish' : 'Ro\'yxatdan o\'tish';
+  }
+}
+
+async function signOut() {
+  await db.auth.signOut();
+}
+
+function showAuthScreen() {
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('auth-user-info').textContent = '';
+}
+
+function showApp(user) {
+  document.getElementById('auth-screen').classList.add('hidden');
+  // Telefon raqamni emaildan ajratib ko'rsatish
+  const phone = user.email ? '+' + user.email.replace('@crm.uz', '') : '';
+  document.getElementById('auth-user-info').textContent = '&#128100; ' + phone;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MIGRATION: Google Sheets → Supabase
+// ═══════════════════════════════════════════════════════════════════════════════
+let migData = null;
+const GS_URL = 'https://script.google.com/macros/s/AKfycbzZ7i5q7pL1sV4AI0cfqWUYWDtkPQh8oz12PjdmagboQJnqD_jXNWNwY1gn2XnF9i1EhA/exec';
+
+function openMigrationModal() {
+  document.getElementById('mig-url').value = GS_URL;
+  document.getElementById('mig-preview').style.display = 'none';
+  document.getElementById('mig-run-btn').style.display = 'none';
+  document.getElementById('mig-step-1').style.display = 'block';
+  document.getElementById('mig-step-2').style.display = 'none';
+  document.getElementById('mig-log').innerHTML = '';
+  document.getElementById('mig-close-btn').style.display = 'none';
+  migData = null;
+  openModal('modal-migration');
+}
+
+async function gsFetch(url, action, params = {}) {
+  const res = await fetch(url, {
     method: 'POST',
     body: JSON.stringify({ action, ...params }),
   });
@@ -262,12 +444,146 @@ async function api(action, params = {}) {
   return data.result;
 }
 
+async function migrationCheck() {
+  const url = document.getElementById('mig-url').value.trim();
+  if (!url) { toast('URL kiriting!', 'danger'); return; }
+
+  const btn = document.getElementById('mig-check-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Tekshirilmoqda...';
+
+  try {
+    const [customers, products, sales] = await Promise.all([
+      gsFetch(url, 'customers.list'),
+      gsFetch(url, 'products.list'),
+      gsFetch(url, 'sales.list'),
+    ]);
+    migData = { customers, products, sales };
+
+    document.getElementById('mig-counts').innerHTML = `
+      <div style="text-align:center;"><div style="font-size:1.6rem;font-weight:700;color:var(--accent)">${customers.length}</div><div style="color:var(--text-muted);font-size:.78rem;">Mijozlar</div></div>
+      <div style="text-align:center;"><div style="font-size:1.6rem;font-weight:700;color:var(--success)">${products.length}</div><div style="color:var(--text-muted);font-size:.78rem;">Mahsulotlar</div></div>
+      <div style="text-align:center;"><div style="font-size:1.6rem;font-weight:700;color:var(--warning)">${sales.length}</div><div style="color:var(--text-muted);font-size:.78rem;">Sotuvlar</div></div>
+      <div style="text-align:center;"><div style="font-size:1.6rem;font-weight:700;color:var(--accent2)">${sales.reduce((s,r)=>s+r.items.length,0)}</div><div style="color:var(--text-muted);font-size:.78rem;">Sotuv qatorlari</div></div>`;
+    document.getElementById('mig-preview').style.display = 'block';
+    document.getElementById('mig-run-btn').style.display = 'inline-block';
+    toast('Ma\'lumotlar topildi!', 'success');
+  } catch(e) {
+    toast('Xato: ' + e.message, 'danger');
+  } finally {
+    btn.disabled = false; btn.textContent = '🔍 Tekshirish';
+  }
+}
+
+async function runMigration() {
+  if (!migData) return;
+  document.getElementById('mig-step-1').style.display = 'none';
+  document.getElementById('mig-step-2').style.display = 'block';
+
+  const logEl = document.getElementById('mig-log');
+  const log = (msg, color = '') => {
+    logEl.innerHTML += `<div style="color:${color || 'inherit'}">${msg}</div>`;
+    logEl.scrollTop = logEl.scrollHeight;
+  };
+
+  try {
+    const { customers, products, sales } = migData;
+
+    // ── Tozalash ──────────────────────────────────────────────────────────────
+    log('&#128465; Mavjud Supabase ma\'lumotlari tozalanmoqda...');
+    await db.from('sale_items').delete().neq('id', 0);
+    await db.from('sales').delete().neq('id', 0);
+    await db.from('customers').delete().neq('id', 0);
+    await db.from('products').delete().neq('id', 0);
+    log('&#10003; Tozalandi', 'var(--success)');
+
+    // ── Mijozlar ──────────────────────────────────────────────────────────────
+    log(`&#128101; ${customers.length} ta mijoz qo'shilmoqda...`);
+    const custMap = {};
+    for (const c of customers) {
+      const { data, error } = await db.from('customers').insert({
+        name: c.name, phone: c.phone,
+        email: c.email || '', address: c.address || '',
+        created_at: c.created_at ? c.created_at + '+05:00' : undefined,
+      }).select('id').single();
+      if (error) throw new Error('Mijoz: ' + error.message);
+      custMap[String(c.id)] = data.id;
+    }
+    log(`&#10003; ${customers.length} ta mijoz qo'shildi`, 'var(--success)');
+
+    // ── Mahsulotlar ───────────────────────────────────────────────────────────
+    log(`&#128230; ${products.length} ta mahsulot qo'shilmoqda...`);
+    const prodMap = {};
+    for (const p of products) {
+      const { data, error } = await db.from('products').insert({
+        name: p.name, price: Number(p.price), qty: Number(p.qty),
+        created_at: p.created_at ? p.created_at + '+05:00' : undefined,
+      }).select('id').single();
+      if (error) throw new Error('Mahsulot: ' + error.message);
+      prodMap[String(p.id)] = data.id;
+    }
+    log(`&#10003; ${products.length} ta mahsulot qo'shildi`, 'var(--success)');
+
+    // ── Sotuvlar ──────────────────────────────────────────────────────────────
+    log(`&#128179; ${sales.length} ta sotuv qo'shilmoqda...`);
+    let saleCount = 0, itemCount = 0;
+    for (const s of sales) {
+      const { data: sale, error: se } = await db.from('sales').insert({
+        customer_id:      custMap[String(s.customer_id)] || null,
+        customer_name:    s.customer_name,
+        customer_phone:   s.customer_phone   || '',
+        customer_email:   s.customer_email   || '',
+        customer_address: s.customer_address || '',
+        total:            Number(s.total),
+        created_at:       s.created_at ? s.created_at + '+05:00' : undefined,
+      }).select('id').single();
+      if (se) throw new Error('Sotuv: ' + se.message);
+
+      if (s.items && s.items.length) {
+        const { error: ie } = await db.from('sale_items').insert(
+          s.items.map(i => ({
+            sale_id:    sale.id,
+            product_id: prodMap[String(i.productId)] || null,
+            name:       i.name,
+            price:      Number(i.price),
+            qty:        Number(i.qty),
+          }))
+        );
+        if (ie) throw new Error('Sotuv qatori: ' + ie.message);
+        itemCount += s.items.length;
+      }
+      saleCount++;
+    }
+    log(`&#10003; ${saleCount} ta sotuv, ${itemCount} ta qator qo'shildi`, 'var(--success)');
+
+    log('');
+    log('&#127881; Ko\'chirish muvaffaqiyatli yakunlandi!', 'var(--accent)');
+    document.getElementById('mig-close-btn').style.display = 'inline-block';
+    allProducts = products;
+  } catch(e) {
+    log('&#10060; Xato: ' + e.message, 'var(--danger)');
+    document.getElementById('mig-close-btn').style.display = 'inline-block';
+  }
+}
+
+// ─── Auth holati kuzatuvchisi ─────────────────────────────────────────────────
+db.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    showApp(session.user);
+    checkDB();
+    renderDashboard();
+    db.from('products').select('*').order('name').then(({ data }) => { if (data) allProducts = data; });
+  } else {
+    showAuthScreen();
+  }
+});
+
 // ─── Ulanish holati ───────────────────────────────────────────────────────────
 async function checkDB() {
   try {
-    await api('stats');
+    const { error } = await db.from('customers').select('id', { count: 'exact', head: true });
     const el = document.getElementById('db-status');
-    el.innerHTML = '&#9679; Google Sheets — ulangan';
+    if (error) throw error;
+    el.innerHTML = '&#9679; Supabase — ulangan';
     el.className = '';
   } catch {
     const el = document.getElementById('db-status');
@@ -330,21 +646,34 @@ function fmt(n) { return Number(n).toLocaleString('uz-UZ') + ' so\'m'; }
 // ═══════════════════════════════════════════════════════════════════════════════
 async function renderDashboard() {
   try {
-    const [stats, sales] = await Promise.all([api('stats'), api('sales.list')]);
-    document.getElementById('dash-customers').textContent = stats.customers;
-    document.getElementById('dash-products').textContent  = stats.products;
-    document.getElementById('dash-sales').textContent     = stats.sales;
-    document.getElementById('dash-revenue').textContent   = stats.revenue.toLocaleString('uz-UZ');
+    const [
+      { count: custCount },
+      { count: prodCount },
+      { data: salesData },
+    ] = await Promise.all([
+      db.from('customers').select('*', { count: 'exact', head: true }),
+      db.from('products').select('*', { count: 'exact', head: true }),
+      db.from('sales').select('*, sale_items(*)').order('created_at', { ascending: false }).limit(8),
+    ]);
 
-    const recent = sales.slice(0, 8);
+    const revenue = salesData ? salesData.reduce((s, r) => s + Number(r.total), 0) : 0;
+    document.getElementById('dash-customers').textContent = custCount ?? 0;
+    document.getElementById('dash-products').textContent  = prodCount ?? 0;
+    document.getElementById('dash-sales').textContent     = salesData?.length ?? 0;
+    document.getElementById('dash-revenue').textContent   = revenue.toLocaleString('uz-UZ');
+
     const tbody = document.getElementById('dash-recent');
+    const recent = salesData || [];
     tbody.innerHTML = recent.length
-      ? recent.map(s => `<tr>
-          <td>${new Date(s.created_at).toLocaleString('uz-UZ')}</td>
-          <td>${s.customer_name}</td>
-          <td><button class="btn btn-secondary btn-sm" onclick='showItemsModal(${JSON.stringify(s)})'>&#128230; Ko'rish (${s.items.length})</button></td>
-          <td style="color:var(--success);font-weight:600">${fmt(s.total)}</td>
-        </tr>`).join('')
+      ? recent.map(s => {
+          const items = s.sale_items || [];
+          return `<tr>
+            <td>${new Date(s.created_at).toLocaleString('uz-UZ')}</td>
+            <td>${s.customer_name}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick='showItemsModal(${JSON.stringify({...s, items})})'>&#128230; Ko'rish (${items.length})</button></td>
+            <td style="color:var(--success);font-weight:600">${fmt(s.total)}</td>
+          </tr>`;
+        }).join('')
       : '<tr class="empty-row"><td colspan="4">Hali sotuvlar yo\'q</td></tr>';
   } catch(e) { toast('Dashboard yuklanmadi: ' + e.message, 'danger'); }
 }
@@ -356,7 +685,10 @@ async function renderCustomers(q = '') {
   const tbody = document.getElementById('customers-tbody');
   tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><span class="spinner"></span> Yuklanmoqda...</td></tr>';
   try {
-    const list = await api('customers.list', q ? { q } : {});
+    let query = db.from('customers').select('*').order('created_at', { ascending: false });
+    if (q) query = query.or(`name.ilike.%${q}%,phone.ilike.%${q}%`);
+    const { data: list, error } = await query;
+    if (error) throw error;
     tbody.innerHTML = list.length
       ? list.map((c, i) => `<tr>
           <td>${i+1}</td>
@@ -365,6 +697,7 @@ async function renderCustomers(q = '') {
           <td>${c.email||'—'}</td>
           <td>${c.address||'—'}</td>
           <td><div class="actions">
+            <button class="btn btn-secondary btn-sm btn-icon" onclick="showCustomerHistory(${c.id},'${c.name.replace(/'/g,"\\'")}')">&#128203;</button>
             <button class="btn btn-warning btn-sm btn-icon" onclick='editCustomer(${JSON.stringify(c)})'>&#9998;</button>
             <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCustomer(${c.id})">&#128465;</button>
           </div></td>
@@ -397,11 +730,14 @@ async function saveCustomer() {
   };
   if (!body.name || !body.phone) { toast('Ism va telefon majburiy!', 'danger'); return; }
   try {
+    let error;
     if (editCustomerId) {
-      await api('customers.update', { id: editCustomerId, ...body });
+      ({ error } = await db.from('customers').update(body).eq('id', editCustomerId));
+      if (error) throw error;
       toast('Mijoz yangilandi', 'success');
     } else {
-      await api('customers.create', body);
+      ({ error } = await db.from('customers').insert(body));
+      if (error) throw error;
       toast('Mijoz qo\'shildi', 'success');
     }
     closeModal('modal-customer'); renderCustomers();
@@ -409,8 +745,11 @@ async function saveCustomer() {
 }
 async function deleteCustomer(id) {
   if (!confirm('Mijozni o\'chirishni tasdiqlaysizmi?')) return;
-  try { await api('customers.delete', { id }); toast('Mijoz o\'chirildi', 'danger'); renderCustomers(); }
-  catch(e) { toast(e.message, 'danger'); }
+  try {
+    const { error } = await db.from('customers').delete().eq('id', id);
+    if (error) throw error;
+    toast('Mijoz o\'chirildi', 'danger'); renderCustomers();
+  } catch(e) { toast(e.message, 'danger'); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -420,7 +759,10 @@ async function renderProducts(q = '') {
   const tbody = document.getElementById('products-tbody');
   tbody.innerHTML = '<tr class="empty-row"><td colspan="6"><span class="spinner"></span> Yuklanmoqda...</td></tr>';
   try {
-    const list = await api('products.list', q ? { q } : {});
+    let query = db.from('products').select('*').order('created_at', { ascending: false });
+    if (q) query = query.ilike('name', `%${q}%`);
+    const { data: list, error } = await query;
+    if (error) throw error;
     allProducts = list;
     tbody.innerHTML = list.length
       ? list.map((p, i) => `<tr>
@@ -463,11 +805,14 @@ async function saveProduct() {
   };
   if (!body.name || isNaN(body.price) || isNaN(body.qty)) { toast('Barcha maydonlar to\'ldirilishi kerak!', 'danger'); return; }
   try {
+    let error;
     if (editProductId) {
-      await api('products.update', { id: editProductId, ...body });
+      ({ error } = await db.from('products').update(body).eq('id', editProductId));
+      if (error) throw error;
       toast('Mahsulot yangilandi', 'success');
     } else {
-      await api('products.create', body);
+      ({ error } = await db.from('products').insert(body));
+      if (error) throw error;
       toast('Mahsulot qo\'shildi', 'success');
     }
     closeModal('modal-product'); renderProducts();
@@ -475,8 +820,11 @@ async function saveProduct() {
 }
 async function deleteProduct(id) {
   if (!confirm('Mahsulotni o\'chirishni tasdiqlaysizmi?')) return;
-  try { await api('products.delete', { id }); toast('Mahsulot o\'chirildi', 'danger'); renderProducts(); }
-  catch(e) { toast(e.message, 'danger'); }
+  try {
+    const { error } = await db.from('products').delete().eq('id', id);
+    if (error) throw error;
+    toast('Mahsulot o\'chirildi', 'danger'); renderProducts();
+  } catch(e) { toast(e.message, 'danger'); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -484,7 +832,11 @@ async function deleteProduct(id) {
 // ═══════════════════════════════════════════════════════════════════════════════
 async function renderSell() {
   try {
-    const [customers, products] = await Promise.all([api('customers.list'), api('products.list')]);
+    const [{ data: customers, error: e1 }, { data: products, error: e2 }] = await Promise.all([
+      db.from('customers').select('*').order('name'),
+      db.from('products').select('*').order('name'),
+    ]);
+    if (e1) throw e1; if (e2) throw e2;
     allProducts = products;
     const sel = document.getElementById('sell-customer');
     sel.innerHTML = '<option value="">— Mijoz tanlang —</option>' +
@@ -538,18 +890,112 @@ async function saveSale() {
     if (!prod) return;
     if (!qty || qty < 1) { toast('Miqdor noto\'g\'ri!', 'danger'); valid = false; return; }
     if (qty > maxQty) { toast(`"${prod.name}" uchun ${maxQty} dona mavjud!`, 'danger'); valid = false; return; }
-    items.push({ productId: prod.id, name: prod.name, price: parseFloat(prod.price), qty });
+    items.push({ product_id: prod.id, name: prod.name, price: parseFloat(prod.price), qty });
   });
   if (!valid || !items.length) { if (!items.length) toast('Kamida bitta mahsulot qo\'shing!', 'danger'); return; }
 
   const btn = document.getElementById('sell-btn');
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saqlanmoqda...';
   try {
-    await api('sales.create', { customerId: custId, items });
+    const { data: customer, error: ce } = await db.from('customers').select('*').eq('id', custId).single();
+    if (ce) throw ce;
+
+    // Stok tekshirish
+    for (const item of items) {
+      const prod = allProducts.find(p => p.id == item.product_id);
+      if (prod.qty < item.qty) throw new Error(`"${prod.name}" uchun faqat ${prod.qty} dona mavjud!`);
+    }
+
+    const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+
+    const { data: sale, error: se } = await db.from('sales').insert({
+      customer_id:      customer.id,
+      customer_name:    customer.name,
+      customer_phone:   customer.phone,
+      customer_email:   customer.email   || '',
+      customer_address: customer.address || '',
+      total,
+    }).select().single();
+    if (se) throw se;
+
+    const { error: ie } = await db.from('sale_items').insert(
+      items.map(i => ({ sale_id: sale.id, product_id: i.product_id, name: i.name, price: i.price, qty: i.qty }))
+    );
+    if (ie) throw ie;
+
+    // Stokdan ayirish
+    for (const item of items) {
+      const prod = allProducts.find(p => p.id == item.product_id);
+      await db.from('products').update({ qty: prod.qty - item.qty }).eq('id', prod.id);
+    }
+
     toast('Sotuv saqlandi!', 'success');
     renderSell();
   } catch(e) { toast(e.message, 'danger'); }
   finally { btn.disabled = false; btn.innerHTML = '&#10003; Sotishni saqlash'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CUSTOMER HISTORY MODAL
+// ═══════════════════════════════════════════════════════════════════════════════
+async function showCustomerHistory(customerId, customerName) {
+  document.getElementById('ch-title').textContent = customerName + ' — sotuvlar tarixi';
+  document.getElementById('ch-stats').innerHTML = '<span class="spinner"></span>';
+  document.getElementById('ch-body').innerHTML = '';
+  openModal('modal-customer-history');
+
+  try {
+    const { data, error } = await db
+      .from('sales')
+      .select('*, sale_items(*)')
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const list = data.map(s => ({ ...s, items: s.sale_items || [] }));
+    const totalRevenue = list.reduce((sum, s) => sum + Number(s.total), 0);
+    const totalItems   = list.reduce((sum, s) => sum + s.items.reduce((a, i) => a + i.qty, 0), 0);
+
+    document.getElementById('ch-stats').innerHTML = `
+      <div class="dash-card c3" style="flex:1;min-width:120px;padding:12px 16px;">
+        <div class="label">SOTUVLAR</div>
+        <div class="value" style="font-size:1.4rem;">${list.length}</div>
+      </div>
+      <div class="dash-card c2" style="flex:1;min-width:120px;padding:12px 16px;">
+        <div class="label">JAMI SUMMA</div>
+        <div class="value" style="font-size:1.1rem;">${totalRevenue.toLocaleString('uz-UZ')} so'm</div>
+      </div>
+      <div class="dash-card c4" style="flex:1;min-width:120px;padding:12px 16px;">
+        <div class="label">JAMI MAHSULOT</div>
+        <div class="value" style="font-size:1.4rem;">${totalItems} dona</div>
+      </div>`;
+
+    if (!list.length) {
+      document.getElementById('ch-body').innerHTML =
+        '<div style="color:var(--text-muted);text-align:center;padding:32px;">Hali sotuvlar yo\'q</div>';
+      return;
+    }
+
+    document.getElementById('ch-body').innerHTML = list.map(s => `
+      <div class="history-card">
+        <div class="history-top">
+          <div>
+            <div style="font-size:.85rem;font-weight:600;color:var(--accent);">#${s.id}</div>
+            <div class="history-meta">${new Date(s.created_at).toLocaleString('uz-UZ')}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:1rem;font-weight:700;color:var(--success);">${fmt(s.total)}</span>
+            <button class="btn btn-primary btn-sm" onclick='downloadPDF(${JSON.stringify(s)})'>&#128229; PDF</button>
+          </div>
+        </div>
+        <div class="history-items">
+          ${s.items.map(i => `<div>&#8226; ${i.name} — ${i.qty} dona × ${fmt(i.price)} = <strong>${fmt(i.price * i.qty)}</strong></div>`).join('')}
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    document.getElementById('ch-body').innerHTML =
+      `<div style="color:var(--danger);text-align:center;padding:32px;">Xato: ${e.message}</div>`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -559,7 +1005,9 @@ async function renderHistory() {
   const el = document.getElementById('history-list');
   el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;"><span class="spinner"></span> Yuklanmoqda...</div>';
   try {
-    const list = await api('sales.list');
+    const { data, error } = await db.from('sales').select('*, sale_items(*)').order('created_at', { ascending: false });
+    if (error) throw error;
+    const list = data.map(s => ({ ...s, items: s.sale_items || [] }));
     if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Hali sotuvlar yo\'q</div>'; return; }
     el.innerHTML = list.map(s => `
       <div class="history-card">
@@ -699,10 +1147,10 @@ function selectProductSuggestion(p) {
   document.getElementById('pm-title').textContent = 'Mahsulotni tahrirlash';
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-checkDB();
-renderDashboard();
-api('products.list').then(list => { allProducts = list; }).catch(()=>{});
+// ─── Init: session tekshirish ─────────────────────────────────────────────────
+db.auth.getSession().then(({ data: { session } }) => {
+  if (!session) showAuthScreen();
+});
 </script>
 </body>
 </html>
