@@ -250,6 +250,20 @@
         <button class="btn btn-success" id="sell-btn" style="width:100%;margin-top:18px;padding:13px;" onclick="saveSale()">&#10003; Sotishni saqlash</button>
       </div>
     </div>
+    <div id="last-sale-card" style="display:none;margin-top:20px;" class="history-card">
+      <div class="history-top">
+        <div>
+          <div style="font-weight:700;color:var(--success);">&#10003; Sotuv saqlandi!</div>
+          <div id="lsc-meta" class="history-meta"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-success btn-sm" onclick="downloadExcel(lastSale)">&#128202; Excel</button>
+          <button class="btn btn-primary btn-sm" onclick="downloadPDF(lastSale)">&#128229; PDF</button>
+        </div>
+      </div>
+      <div id="lsc-items" class="history-items" style="margin-top:8px;"></div>
+      <div id="lsc-total" class="history-total"></div>
+    </div>
   </div>
 
   <!-- HISTORY -->
@@ -356,6 +370,7 @@ let allProducts  = [];
 let allCustomers = [];
 let editCustomerId = null;
 let editProductId  = null;
+let lastSale = null;
 let currentAuthTab = 'login';
 
 // ─── Phone helper ─────────────────────────────────────────────────────────────
@@ -1007,8 +1022,15 @@ async function saveSale() {
       await db.from('products').update({ qty: prod.qty - item.qty }).eq('id', prod.id);
     }
 
+    lastSale = { ...sale, items, customer_phone: customer.phone, customer_email: customer.email || '', customer_address: customer.address || '' };
     toast('Sotuv saqlandi!', 'success');
     renderSell();
+    // Success kartasini ko'rsatish
+    const card = document.getElementById('last-sale-card');
+    document.getElementById('lsc-meta').textContent = customer.name + ' · ' + new Date(sale.created_at).toLocaleString('uz-UZ');
+    document.getElementById('lsc-items').innerHTML = items.map(i => `<div>&#8226; ${i.name} — ${i.qty} dona × ${fmt(i.price)} = <strong>${fmt(i.price*i.qty)}</strong></div>`).join('');
+    document.getElementById('lsc-total').textContent = 'Jami: ' + fmt(sale.total);
+    card.style.display = 'block';
   } catch(e) { toast(e.message, 'danger'); }
   finally { btn.disabled = false; btn.innerHTML = '&#10003; Sotishni saqlash'; }
 }
@@ -1095,7 +1117,10 @@ async function renderHistory() {
             <div class="history-meta">${s.customer_phone}${s.customer_email?' · '+s.customer_email:''}</div>
             <div class="history-meta">${new Date(s.created_at).toLocaleString('uz-UZ')}</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick='downloadPDF(${JSON.stringify(s)})'>&#128229; PDF</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-success btn-sm" onclick='downloadExcel(${JSON.stringify(s)})'>&#128202; Excel</button>
+            <button class="btn btn-primary btn-sm" onclick='downloadPDF(${JSON.stringify(s)})'>&#128229; PDF</button>
+          </div>
         </div>
         <div class="history-items">
           ${s.items.map(i=>`<div>&#8226; ${i.name} — ${i.qty} dona × ${fmt(i.price)} = <strong>${fmt(i.price*i.qty)}</strong></div>`).join('')}
@@ -1108,6 +1133,52 @@ async function renderHistory() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PDF
 // ═══════════════════════════════════════════════════════════════════════════════
+function downloadExcel(s) {
+  const rows = s.items.map((item, i) => `
+    <tr>
+      <td style="border:1px solid #000;text-align:center;background:#fff;padding:5px 8px;">${i + 1}</td>
+      <td style="border:1px solid #000;background:#fff;padding:5px 8px;">${item.name}</td>
+      <td style="border:1px solid #000;text-align:center;background:#fff;padding:5px 8px;">${item.qty}</td>
+      <td style="border:1px solid #000;text-align:right;background:#fff;padding:5px 8px;">${Number(item.price).toLocaleString('uz-UZ')}</td>
+      <td style="border:1px solid #000;text-align:right;background:#fff;padding:5px 8px;font-weight:600;">${(item.price * item.qty).toLocaleString('uz-UZ')}</td>
+    </tr>`).join('');
+
+  const th = 'border:1px solid #000;background:#FFFF00;padding:6px 10px;font-weight:700;text-align:center;';
+  const html = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+    <x:Name>Sotuv</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+    </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>
+    <body>
+      <table border="1" style="border-collapse:collapse;font-family:Arial;font-size:11pt;">
+        <tr>
+          <th style="${th}">j</th>
+          <th style="${th}">${s.customer_name}</th>
+          <th style="${th}">Soni</th>
+          <th style="${th}">Summa</th>
+          <th style="${th}">Jami summa</th>
+        </tr>
+        ${rows}
+        <tr>
+          <td style="border:1px solid #000;background:#FFFF00;padding:5px 8px;"></td>
+          <td style="border:1px solid #000;background:#FFFF00;font-weight:700;text-align:center;padding:5px 8px;">JAMI</td>
+          <td style="border:1px solid #000;background:#FFFF00;padding:5px 8px;"></td>
+          <td style="border:1px solid #000;background:#FFFF00;padding:5px 8px;"></td>
+          <td style="border:1px solid #000;background:#FFFF00;font-weight:700;text-align:right;padding:5px 8px;">${Number(s.total).toLocaleString('uz-UZ')}</td>
+        </tr>
+      </table>
+    </body></html>`;
+
+  const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sotuv-${s.customer_name}-${new Date(s.created_at).toLocaleDateString('uz-UZ')}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('Excel yuklab olindi!', 'success');
+}
+
 function downloadPDF(s) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'mm', format:'a4' });
