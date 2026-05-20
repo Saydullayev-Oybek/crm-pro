@@ -80,8 +80,15 @@
   .sell-card{background:var(--card-bg);border:1px solid var(--border);border-radius:14px;padding:22px;}
   .sell-card h3{font-size:.95rem;font-weight:600;color:var(--text-muted);margin-bottom:14px;}
   .product-row{display:flex;gap:8px;align-items:center;background:var(--card2-bg);border-radius:8px;padding:8px 10px;margin-bottom:8px;}
-  .product-row select{flex:2;} .product-row input{flex:1;min-width:60px;}
   .product-row .rm{background:var(--danger);color:#fff;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:.85rem;}
+  .prod-search-wrap{flex:2;position:relative;}
+  .prod-search-wrap input[type=text]{width:100%;}
+  .prod-qty{flex:1;min-width:60px;}
+  .prod-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--input-bg);border:1px solid var(--accent);border-top:none;border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto;z-index:300;display:none;}
+  .prod-dropdown-item{padding:9px 12px;cursor:pointer;font-size:.85rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+  .prod-dropdown-item:last-child{border-bottom:none;}
+  .prod-dropdown-item:hover{background:var(--hover);}
+  .prod-dropdown-empty{padding:10px 12px;color:var(--text-muted);font-size:.83rem;}
   #cart-total{font-size:1.4rem;font-weight:700;color:var(--success);margin-top:12px;}
 
   .history-card{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:12px;}
@@ -847,28 +854,69 @@ async function renderSell() {
 }
 
 function addCartRow() {
-  const opts = allProducts.map(p =>
-    `<option value="${p.id}" data-price="${p.price}" data-maxqty="${p.qty}">${p.name} (${p.qty} dona)</option>`
-  ).join('');
   const row = document.createElement('div');
   row.className = 'product-row';
   row.innerHTML = `
-    <select onchange="updateTotal()"><option value="">Mahsulot</option>${opts}</select>
-    <input type="number" min="1" value="1" placeholder="Miqdor" oninput="updateTotal()">
+    <div class="prod-search-wrap">
+      <input type="text" class="prod-search" placeholder="&#128269; Mahsulot qidiring..." autocomplete="off"
+        oninput="filterProdSearch(this)" onfocus="filterProdSearch(this)">
+      <div class="prod-dropdown"></div>
+      <input type="hidden" class="prod-id" value="">
+      <input type="hidden" class="prod-price" value="0">
+      <input type="hidden" class="prod-maxqty" value="0">
+    </div>
+    <input type="number" class="prod-qty" min="1" value="1" placeholder="Miqdor" oninput="updateTotal()">
     <button class="rm" onclick="this.parentElement.remove();updateTotal()">&#10005;</button>`;
   document.getElementById('cart-rows').appendChild(row);
 }
 
+function filterProdSearch(input) {
+  const val = input.value.toLowerCase().trim();
+  const dropdown = input.parentElement.querySelector('.prod-dropdown');
+  const matches = val
+    ? allProducts.filter(p => p.name.toLowerCase().includes(val))
+    : allProducts;
+
+  if (!matches.length) {
+    dropdown.innerHTML = `<div class="prod-dropdown-empty">Topilmadi</div>`;
+  } else {
+    dropdown.innerHTML = matches.map(p => `
+      <div class="prod-dropdown-item" onmousedown="selectProdItem(event, this)"
+        data-id="${p.id}" data-name="${p.name.replace(/"/g,'&quot;')}" data-price="${p.price}" data-maxqty="${p.qty}">
+        <span>${p.name}</span>
+        <span style="color:var(--text-muted);font-size:.78rem;">${p.qty} dona &nbsp;·&nbsp; ${fmt(p.price)}</span>
+      </div>`).join('');
+  }
+  dropdown.style.display = 'block';
+}
+
+function selectProdItem(e, item) {
+  e.preventDefault();
+  const wrap = item.closest('.prod-search-wrap');
+  wrap.querySelector('.prod-search').value  = item.dataset.name;
+  wrap.querySelector('.prod-id').value      = item.dataset.id;
+  wrap.querySelector('.prod-price').value   = item.dataset.price;
+  wrap.querySelector('.prod-maxqty').value  = item.dataset.maxqty;
+  wrap.querySelector('.prod-dropdown').style.display = 'none';
+  updateTotal();
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.classList.contains('prod-search')) {
+    document.querySelectorAll('.prod-dropdown').forEach(d => d.style.display = 'none');
+  }
+});
+
 function updateTotal() {
   let total = 0; let summary = '';
   document.querySelectorAll('.product-row').forEach(row => {
-    const sel = row.querySelector('select');
-    const qty = parseInt(row.querySelector('input').value) || 0;
-    if (!sel.value) return;
-    const opt = sel.selectedOptions[0];
-    const price = parseFloat(opt.dataset.price) || 0;
+    const id    = row.querySelector('.prod-id')?.value;
+    const price = parseFloat(row.querySelector('.prod-price')?.value) || 0;
+    const name  = row.querySelector('.prod-search')?.value || '';
+    const qty   = parseInt(row.querySelector('.prod-qty').value) || 0;
+    if (!id) return;
     total += price * qty;
-    summary += `<div>${opt.text.split('(')[0].trim()} × ${qty} = ${fmt(price*qty)}</div>`;
+    summary += `<div>${name} × ${qty} = ${fmt(price * qty)}</div>`;
   });
   document.getElementById('cart-summary').innerHTML = summary || '<i>Mahsulot tanlanmagan</i>';
   document.getElementById('cart-total').textContent = 'Jami: ' + fmt(total);
@@ -880,16 +928,15 @@ async function saveSale() {
   const items = [];
   let valid = true;
   document.querySelectorAll('.product-row').forEach(row => {
-    const sel = row.querySelector('select');
-    const qty = parseInt(row.querySelector('input').value);
-    if (!sel.value) return;
-    const opt = sel.selectedOptions[0];
-    const maxQty = parseInt(opt.dataset.maxqty);
-    const prod = allProducts.find(p => p.id == sel.value);
-    if (!prod) return;
+    const id     = row.querySelector('.prod-id')?.value;
+    const price  = parseFloat(row.querySelector('.prod-price')?.value) || 0;
+    const maxQty = parseInt(row.querySelector('.prod-maxqty')?.value) || 0;
+    const name   = row.querySelector('.prod-search')?.value || '';
+    const qty    = parseInt(row.querySelector('.prod-qty').value);
+    if (!id) return;
     if (!qty || qty < 1) { toast('Miqdor noto\'g\'ri!', 'danger'); valid = false; return; }
-    if (qty > maxQty) { toast(`"${prod.name}" uchun ${maxQty} dona mavjud!`, 'danger'); valid = false; return; }
-    items.push({ product_id: prod.id, name: prod.name, price: parseFloat(prod.price), qty });
+    if (qty > maxQty) { toast(`"${name}" uchun ${maxQty} dona mavjud!`, 'danger'); valid = false; return; }
+    items.push({ product_id: parseInt(id), name, price, qty });
   });
   if (!valid || !items.length) { if (!items.length) toast('Kamida bitta mahsulot qo\'shing!', 'danger'); return; }
 
