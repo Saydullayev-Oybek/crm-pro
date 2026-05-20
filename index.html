@@ -233,7 +233,12 @@
     <div class="sell-grid">
       <div class="sell-card">
         <h3>Mijozni tanlang</h3>
-        <div class="form-group"><select id="sell-customer"><option value="">— Mijoz tanlang —</option></select></div>
+        <div class="form-group" style="position:relative;">
+          <input type="text" id="sell-customer-search" placeholder="&#128269; Mijoz qidiring..." autocomplete="off"
+            oninput="filterCustSearch(this)" onfocus="filterCustSearch(this)">
+          <div id="sell-customer-dropdown" class="prod-dropdown"></div>
+          <input type="hidden" id="sell-customer" value="">
+        </div>
         <h3 style="margin-top:16px;">Mahsulotlar</h3>
         <div id="cart-rows"></div>
         <button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="addCartRow()">+ Mahsulot qo'shish</button>
@@ -347,7 +352,8 @@ const SUPABASE_URL  = 'https://xeghgecmoiwshjeucrhm.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhlZ2hnZWNtb2l3c2hqZXVjcmhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMDkxNjUsImV4cCI6MjA5NDc4NTE2NX0.2lOjFTMA9VgvYxxcCJVQtLe_kHtqB25z5Dv0M2FNIkI';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-let allProducts = [];
+let allProducts  = [];
+let allCustomers = [];
 let editCustomerId = null;
 let editProductId  = null;
 let currentAuthTab = 'login';
@@ -844,9 +850,9 @@ async function renderSell() {
     ]);
     if (e1) throw e1; if (e2) throw e2;
     allProducts = products;
-    const sel = document.getElementById('sell-customer');
-    sel.innerHTML = '<option value="">— Mijoz tanlang —</option>' +
-      customers.map(c => `<option value="${c.id}">${c.name} (${c.phone})</option>`).join('');
+    allCustomers = customers;
+    document.getElementById('sell-customer-search').value = '';
+    document.getElementById('sell-customer').value = '';
     document.getElementById('cart-rows').innerHTML = '';
     addCartRow();
     updateTotal();
@@ -868,6 +874,32 @@ function addCartRow() {
     <input type="number" class="prod-qty" min="1" value="1" placeholder="Miqdor" oninput="updateTotal()">
     <button class="rm" onclick="this.parentElement.remove();updateTotal()">&#10005;</button>`;
   document.getElementById('cart-rows').appendChild(row);
+}
+
+function filterCustSearch(input) {
+  const val = input.value.toLowerCase().trim();
+  const dropdown = document.getElementById('sell-customer-dropdown');
+  const matches = val
+    ? allCustomers.filter(c => c.name.toLowerCase().includes(val) || c.phone.includes(val))
+    : allCustomers;
+
+  if (!matches.length) {
+    dropdown.innerHTML = `<div class="prod-dropdown-empty">Topilmadi</div>`;
+  } else {
+    dropdown.innerHTML = matches.map(c => `
+      <div class="prod-dropdown-item" onmousedown="selectCustItem(event, '${c.id}', '${c.name.replace(/'/g,"\\'")}', '${c.phone}')">
+        <span><strong>${c.name}</strong></span>
+        <span style="color:var(--text-muted);font-size:.78rem;">${c.phone}</span>
+      </div>`).join('');
+  }
+  dropdown.style.display = 'block';
+}
+
+function selectCustItem(e, id, name, phone) {
+  e.preventDefault();
+  document.getElementById('sell-customer-search').value = name + ' (' + phone + ')';
+  document.getElementById('sell-customer').value = id;
+  document.getElementById('sell-customer-dropdown').style.display = 'none';
 }
 
 function filterProdSearch(input) {
@@ -902,7 +934,7 @@ function selectProdItem(e, item) {
 }
 
 document.addEventListener('click', e => {
-  if (!e.target.classList.contains('prod-search')) {
+  if (!e.target.closest('.prod-search-wrap') && e.target.id !== 'sell-customer-search') {
     document.querySelectorAll('.prod-dropdown').forEach(d => d.style.display = 'none');
   }
 });
