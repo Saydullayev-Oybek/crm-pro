@@ -370,7 +370,8 @@ let allProducts  = [];
 let allCustomers = [];
 let editCustomerId = null;
 let editProductId  = null;
-let lastSale = null;
+let lastSale   = null;
+const saleCache = {};
 let currentAuthTab = 'login';
 
 // ─── Phone helper ─────────────────────────────────────────────────────────────
@@ -1076,6 +1077,7 @@ async function showCustomerHistory(customerId, customerName) {
       return;
     }
 
+    list.forEach(s => { saleCache[s.id] = s; });
     document.getElementById('ch-body').innerHTML = list.map(s => `
       <div class="history-card">
         <div class="history-top">
@@ -1085,7 +1087,8 @@ async function showCustomerHistory(customerId, customerName) {
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <span style="font-size:1rem;font-weight:700;color:var(--success);">${fmt(s.total)}</span>
-            <button class="btn btn-primary btn-sm" onclick='downloadPDF(${JSON.stringify(s)})'>&#128229; PDF</button>
+            <button class="btn btn-success btn-sm" onclick="downloadExcel(saleCache[${s.id}])">&#128202; Excel</button>
+            <button class="btn btn-primary btn-sm" onclick="downloadPDF(saleCache[${s.id}])">&#128229; PDF</button>
           </div>
         </div>
         <div class="history-items">
@@ -1108,6 +1111,7 @@ async function renderHistory() {
     const { data, error } = await db.from('sales').select('*, sale_items(*)').order('created_at', { ascending: false });
     if (error) throw error;
     const list = data.map(s => ({ ...s, items: s.sale_items || [] }));
+    list.forEach(s => { saleCache[s.id] = s; });
     if (!list.length) { el.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:40px;">Hali sotuvlar yo\'q</div>'; return; }
     el.innerHTML = list.map(s => `
       <div class="history-card">
@@ -1118,8 +1122,8 @@ async function renderHistory() {
             <div class="history-meta">${new Date(s.created_at).toLocaleString('uz-UZ')}</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-success btn-sm" onclick='downloadExcel(${JSON.stringify(s)})'>&#128202; Excel</button>
-            <button class="btn btn-primary btn-sm" onclick='downloadPDF(${JSON.stringify(s)})'>&#128229; PDF</button>
+            <button class="btn btn-success btn-sm" onclick="downloadExcel(saleCache[${s.id}])">&#128202; Excel</button>
+            <button class="btn btn-primary btn-sm" onclick="downloadPDF(saleCache[${s.id}])">&#128229; PDF</button>
           </div>
         </div>
         <div class="history-items">
