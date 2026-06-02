@@ -119,51 +119,10 @@
   .sidebar-overlay{display:none;position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.5);}
   .sidebar-overlay.open{display:block;}
 
-  /* Auth screen */
-  #auth-screen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;}
-  #auth-screen.hidden{display:none;}
-  .auth-card{background:var(--card-bg);border:1px solid var(--border);border-radius:20px;padding:40px 36px;width:100%;max-width:400px;}
-  .auth-logo{text-align:center;margin-bottom:28px;}
-  .auth-logo .icon{font-size:2.4rem;margin-bottom:10px;}
-  .auth-logo h1{font-size:1.5rem;font-weight:700;color:var(--accent);}
-  .auth-logo p{color:var(--text-muted);font-size:.83rem;margin-top:4px;}
-  .auth-tabs{display:flex;gap:4px;background:var(--input-bg);border-radius:10px;padding:4px;margin-bottom:24px;}
-  .auth-tab{flex:1;padding:9px;text-align:center;border-radius:7px;cursor:pointer;font-size:.88rem;font-weight:600;color:var(--text-muted);transition:all .15s;user-select:none;}
-  .auth-tab.active{background:var(--accent);color:#fff;}
-  .auth-error{color:var(--danger);font-size:.82rem;margin-top:10px;text-align:center;min-height:20px;}
-  #auth-user-info{font-size:.78rem;color:var(--text-muted);margin-bottom:10px;word-break:break-all;}
 </style>
 </head>
 <body>
 
-<!-- Auth Screen -->
-<div id="auth-screen">
-  <div class="auth-card">
-    <div class="auth-logo">
-      <div class="icon">&#128200;</div>
-      <h1>CRM Pro</h1>
-      <p>Biznes boshqaruv tizimi</p>
-    </div>
-    <div class="auth-tabs">
-      <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Kirish</div>
-      <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">Ro&#8216;yxatdan o&#8216;tish</div>
-    </div>
-    <div class="form-group">
-      <label>Telefon raqam</label>
-      <input id="auth-phone" type="tel" placeholder="+998 XX XXX XX XX" onkeydown="if(event.key==='Enter')submitAuth()">
-    </div>
-    <div class="form-group">
-      <label>Parol</label>
-      <input id="auth-password" type="password" placeholder="Kamida 6 ta belgi" onkeydown="if(event.key==='Enter')submitAuth()">
-    </div>
-    <div class="form-group" id="auth-confirm-group" style="display:none;">
-      <label>Parolni tasdiqlang</label>
-      <input id="auth-confirm" type="password" placeholder="Parolni qaytaring" onkeydown="if(event.key==='Enter')submitAuth()">
-    </div>
-    <button class="btn btn-primary" id="auth-btn" style="width:100%;padding:13px;margin-top:4px;" onclick="submitAuth()">Kirish</button>
-    <div class="auth-error" id="auth-error"></div>
-  </div>
-</div>
 
 <div id="db-status">&#9679; Supabase</div>
 <button id="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
@@ -178,11 +137,7 @@
     <div class="nav-item" onclick="showPage('sell')"><span class="nav-icon">&#128179;</span> Sotish</div>
     <div class="nav-item" onclick="showPage('history')"><span class="nav-icon">&#128203;</span> Tarix</div>
   </nav>
-  <div class="sidebar-footer">
-    <div id="auth-user-info"></div>
-    <button class="btn btn-danger btn-sm" style="width:100%;margin-bottom:10px;" onclick="signOut()">&#128682; Chiqish</button>
-    &#169; 2026 CRM Pro &mdash; Supabase
-  </div>
+  <div class="sidebar-footer">&#169; 2026 CRM Pro</div>
 </div>
 
 <div id="main">
@@ -372,77 +327,7 @@ let editCustomerId = null;
 let editProductId  = null;
 let lastSale   = null;
 const saleCache = {};
-let currentAuthTab = 'login';
 
-// ─── Phone helper ─────────────────────────────────────────────────────────────
-function phoneToEmail(phone) {
-  const digits = phone.replace(/\D/g, '');
-  const normalized = digits.startsWith('998') ? digits : '998' + digits.replace(/^0/, '');
-  return normalized + '@crm.uz';
-}
-
-// ─── Auth UI ──────────────────────────────────────────────────────────────────
-function switchAuthTab(tab) {
-  currentAuthTab = tab;
-  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
-  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
-  document.getElementById('auth-confirm-group').style.display = tab === 'register' ? 'block' : 'none';
-  document.getElementById('auth-btn').textContent = tab === 'login' ? 'Kirish' : 'Ro\'yxatdan o\'tish';
-  document.getElementById('auth-error').textContent = '';
-}
-
-async function submitAuth() {
-  const phone    = document.getElementById('auth-phone').value.trim();
-  const password = document.getElementById('auth-password').value;
-  const errEl    = document.getElementById('auth-error');
-  const btn      = document.getElementById('auth-btn');
-
-  if (!phone || !password) { errEl.textContent = 'Barcha maydonlarni to\'ldiring!'; return; }
-  if (password.length < 6)  { errEl.textContent = 'Parol kamida 6 ta belgi bo\'lishi kerak!'; return; }
-
-  const email = phoneToEmail(phone);
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Yuklanmoqda...';
-  errEl.textContent = '';
-
-  try {
-    if (currentAuthTab === 'login') {
-      const { error } = await db.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-    } else {
-      const confirm = document.getElementById('auth-confirm').value;
-      if (password !== confirm) throw new Error('Parollar mos kelmadi!');
-      const { error } = await db.auth.signUp({ email, password });
-      if (error) throw error;
-      toast('Ro\'yxatdan o\'tdingiz! Endi kiring.', 'success');
-      switchAuthTab('login');
-    }
-  } catch(e) {
-    const msg = e.message.includes('Invalid login') ? 'Telefon yoki parol noto\'g\'ri!'
-              : e.message.includes('already registered') ? 'Bu telefon raqam allaqachon ro\'yxatdan o\'tgan!'
-              : e.message;
-    errEl.textContent = msg;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = currentAuthTab === 'login' ? 'Kirish' : 'Ro\'yxatdan o\'tish';
-  }
-}
-
-async function signOut() {
-  await db.auth.signOut();
-}
-
-function showAuthScreen() {
-  document.getElementById('auth-screen').classList.remove('hidden');
-  document.getElementById('auth-user-info').textContent = '';
-}
-
-function showApp(user) {
-  document.getElementById('auth-screen').classList.add('hidden');
-  // Telefon raqamni emaildan ajratib ko'rsatish
-  const phone = user.email ? '+' + user.email.replace('@crm.uz', '') : '';
-  document.getElementById('auth-user-info').textContent = '&#128100; ' + phone;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MIGRATION: Google Sheets → Supabase
@@ -593,17 +478,6 @@ async function runMigration() {
   }
 }
 
-// ─── Auth holati kuzatuvchisi ─────────────────────────────────────────────────
-db.auth.onAuthStateChange((event, session) => {
-  if (session) {
-    showApp(session.user);
-    checkDB();
-    renderDashboard();
-    db.from('products').select('*').order('name').then(({ data }) => { if (data) allProducts = data; });
-  } else {
-    showAuthScreen();
-  }
-});
 
 // ─── Ulanish holati ───────────────────────────────────────────────────────────
 async function checkDB() {
@@ -1294,10 +1168,10 @@ function selectProductSuggestion(p) {
   document.getElementById('pm-title').textContent = 'Mahsulotni tahrirlash';
 }
 
-// ─── Init: session tekshirish ─────────────────────────────────────────────────
-db.auth.getSession().then(({ data: { session } }) => {
-  if (!session) showAuthScreen();
-});
+// ─── Init ─────────────────────────────────────────────────────────────────────
+checkDB();
+renderDashboard();
+db.from('products').select('*').order('name').then(({ data }) => { if (data) allProducts = data; });
 </script>
 </body>
 </html>
