@@ -672,7 +672,9 @@ async function renderProducts(q = '') {
           <td><strong>${p.name}</strong></td>
           <td>${fmt(p.price)}</td>
           <td>${p.qty}</td>
-          <td>${p.qty < 5
+          <td>${p.qty === 0
+            ? '<span class="badge badge-low">Tugagan</span>'
+            : p.qty < 5
             ? '<span class="badge badge-low">Kam</span>'
             : '<span class="badge badge-ok">OK</span>'}</td>
           <td><div class="actions">
