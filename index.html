@@ -204,6 +204,7 @@
         <div id="cart-summary" style="color:var(--text-muted);font-size:.88rem;margin-bottom:12px;"></div>
         <div id="cart-total">Jami: 0 so'm</div>
         <button class="btn btn-success" id="sell-btn" style="width:100%;margin-top:18px;padding:13px;" onclick="saveSale()">&#10003; Sotishni saqlash</button>
+        <button class="btn btn-danger" style="width:100%;margin-top:8px;" onclick="clearSale()">&#10006; Formani tozalash</button>
       </div>
     </div>
     <div id="last-sale-card" style="display:none;margin-top:20px;" class="history-card">
@@ -744,12 +745,63 @@ async function renderSell() {
     if (e1) throw e1; if (e2) throw e2;
     allProducts = products;
     allCustomers = customers;
+    const saved = localStorage.getItem('cart_state');
+    if (saved) {
+      try { restoreCartState(JSON.parse(saved)); return; } catch {}
+    }
     document.getElementById('sell-customer-search').value = '';
     document.getElementById('sell-customer').value = '';
     document.getElementById('cart-rows').innerHTML = '';
     addCartRow();
     updateTotal();
   } catch(e) { toast('Yuklashda xato: ' + e.message, 'danger'); }
+}
+
+function saveCartState() {
+  const custEl = document.getElementById('sell-customer');
+  if (!custEl) return;
+  const rows = [];
+  document.querySelectorAll('.product-row').forEach(row => {
+    rows.push({
+      id:     row.querySelector('.prod-id').value,
+      name:   row.querySelector('.prod-search').value,
+      price:  row.querySelector('.prod-price').value,
+      qty:    row.querySelector('.prod-qty').value,
+      maxqty: row.querySelector('.prod-maxqty').value,
+    });
+  });
+  localStorage.setItem('cart_state', JSON.stringify({
+    customer: { id: custEl.value, search: document.getElementById('sell-customer-search').value },
+    rows,
+  }));
+}
+
+function restoreCartState(state) {
+  document.getElementById('sell-customer').value        = state.customer.id     || '';
+  document.getElementById('sell-customer-search').value = state.customer.search || '';
+  document.getElementById('cart-rows').innerHTML = '';
+  const rows = state.rows && state.rows.length ? state.rows : [{}];
+  rows.forEach(r => {
+    addCartRow();
+    if (!r.id) return;
+    const row = document.getElementById('cart-rows').lastElementChild;
+    row.querySelector('.prod-search').value = r.name   || '';
+    row.querySelector('.prod-id').value     = r.id     || '';
+    row.querySelector('.prod-price').value  = r.price  || '';
+    row.querySelector('.prod-qty').value    = r.qty    || 1;
+    row.querySelector('.prod-maxqty').value = r.maxqty || 0;
+  });
+  updateTotal();
+}
+
+function clearSale() {
+  localStorage.removeItem('cart_state');
+  document.getElementById('sell-customer-search').value = '';
+  document.getElementById('sell-customer').value = '';
+  document.getElementById('cart-rows').innerHTML = '';
+  document.getElementById('last-sale-card').style.display = 'none';
+  addCartRow();
+  updateTotal();
 }
 
 function addCartRow() {
@@ -793,6 +845,7 @@ function selectCustItem(e, id, name, phone) {
   document.getElementById('sell-customer-search').value = name + ' (' + phone + ')';
   document.getElementById('sell-customer').value = id;
   document.getElementById('sell-customer-dropdown').style.display = 'none';
+  saveCartState();
 }
 
 function filterProdSearch(input) {
@@ -846,6 +899,7 @@ function updateTotal() {
   });
   document.getElementById('cart-summary').innerHTML = summary || '<i>Mahsulot tanlanmagan</i>';
   document.getElementById('cart-total').textContent = 'Jami: ' + fmt(total);
+  saveCartState();
 }
 
 async function saveSale() {
@@ -902,6 +956,7 @@ async function saveSale() {
     }
 
     lastSale = { ...sale, items, customer_phone: customer.phone, customer_email: customer.email || '', customer_address: customer.address || '' };
+    localStorage.removeItem('cart_state');
     toast('Sotuv saqlandi!', 'success');
     renderSell();
     // Success kartasini ko'rsatish
