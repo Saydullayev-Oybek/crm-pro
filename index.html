@@ -915,7 +915,6 @@ async function saveSale() {
     const qty    = parseInt(row.querySelector('.prod-qty').value);
     if (!id) return;
     if (!qty || qty < 1) { toast('Miqdor noto\'g\'ri!', 'danger'); valid = false; return; }
-    if (qty > maxQty) { toast(`"${name}" uchun ${maxQty} dona mavjud!`, 'danger'); valid = false; return; }
     items.push({ product_id: parseInt(id), name, price, qty });
   });
   if (!valid || !items.length) { if (!items.length) toast('Kamida bitta mahsulot qo\'shing!', 'danger'); return; }
@@ -925,12 +924,6 @@ async function saveSale() {
   try {
     const { data: customer, error: ce } = await db.from('customers').select('*').eq('id', custId).single();
     if (ce) throw ce;
-
-    // Stok tekshirish
-    for (const item of items) {
-      const prod = allProducts.find(p => p.id == item.product_id);
-      if (prod.qty < item.qty) throw new Error(`"${prod.name}" uchun faqat ${prod.qty} dona mavjud!`);
-    }
 
     const total = items.reduce((s, i) => s + i.price * i.qty, 0);
 
