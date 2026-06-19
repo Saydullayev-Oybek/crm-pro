@@ -83,7 +83,8 @@
   .product-row .rm{background:var(--danger);color:#fff;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:.85rem;}
   .prod-search-wrap{flex:2;position:relative;}
   .prod-search-wrap input[type=text]{width:100%;}
-  .prod-qty{flex:1;min-width:60px;}
+  .prod-price{flex:1;min-width:80px;}
+  .prod-qty{flex:0 0 70px;}
   .prod-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--input-bg);border:1px solid var(--accent);border-top:none;border-radius:0 0 8px 8px;max-height:200px;overflow-y:auto;z-index:300;display:none;}
   .prod-dropdown-item{padding:9px 12px;cursor:pointer;font-size:.85rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
   .prod-dropdown-item:last-child{border-bottom:none;}
@@ -760,9 +761,9 @@ function addCartRow() {
         oninput="filterProdSearch(this)" onfocus="filterProdSearch(this)">
       <div class="prod-dropdown"></div>
       <input type="hidden" class="prod-id" value="">
-      <input type="hidden" class="prod-price" value="0">
       <input type="hidden" class="prod-maxqty" value="0">
     </div>
+    <input type="number" class="prod-price" min="0" value="" placeholder="Narx (so'm)" oninput="updateTotal()">
     <input type="number" class="prod-qty" min="1" value="1" placeholder="Miqdor" oninput="updateTotal()">
     <button class="rm" onclick="this.parentElement.remove();updateTotal()">&#10005;</button>`;
   document.getElementById('cart-rows').appendChild(row);
@@ -817,10 +818,11 @@ function filterProdSearch(input) {
 function selectProdItem(e, item) {
   e.preventDefault();
   const wrap = item.closest('.prod-search-wrap');
+  const row  = wrap.closest('.product-row');
   wrap.querySelector('.prod-search').value  = item.dataset.name;
   wrap.querySelector('.prod-id').value      = item.dataset.id;
-  wrap.querySelector('.prod-price').value   = item.dataset.price;
   wrap.querySelector('.prod-maxqty').value  = item.dataset.maxqty;
+  row.querySelector('.prod-price').value    = item.dataset.price;
   wrap.querySelector('.prod-dropdown').style.display = 'none';
   updateTotal();
 }
@@ -1032,10 +1034,10 @@ function downloadExcel(s) {
     <body>
       <table border="1" style="border-collapse:collapse;font-family:Arial;font-size:11pt;">
         <tr>
-          <th style="${th}">j</th>
-          <th style="${th}">${s.customer_name}</th>
+          <th style="${th}">#</th>
+          <th style="${th}">Mahsulot nomi</th>
           <th style="${th}">Soni</th>
-          <th style="${th}">Summa</th>
+          <th style="${th}">Narxi (so'm)</th>
           <th style="${th}">Jami summa</th>
         </tr>
         ${rows}
