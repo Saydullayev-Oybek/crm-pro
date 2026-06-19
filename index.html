@@ -842,7 +842,7 @@ function updateTotal() {
     const qty   = parseInt(row.querySelector('.prod-qty').value) || 0;
     if (!id) return;
     total += price * qty;
-    summary += `<div>${name} × ${qty} = ${fmt(price * qty)}</div>`;
+    summary += `<div>${name} — ${fmt(price)} × ${qty} = ${fmt(price * qty)}</div>`;
   });
   document.getElementById('cart-summary').innerHTML = summary || '<i>Mahsulot tanlanmagan</i>';
   document.getElementById('cart-total').textContent = 'Jami: ' + fmt(total);
