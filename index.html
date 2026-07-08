@@ -186,6 +186,12 @@
   <!-- SELL -->
   <div class="page" id="page-sell">
     <div class="page-title">&#128179; Sotish</div>
+    <div id="sell-edit-banner" class="history-card" style="display:none;margin-bottom:14px;border-left:4px solid var(--warning);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div>&#9998; <strong>#<span id="sell-edit-id"></span></strong>-sonli sotuvni tahrirlamoqdasiz</div>
+        <button class="btn btn-secondary btn-sm" onclick="clearSale()">Bekor qilish</button>
+      </div>
+    </div>
     <div class="sell-grid">
       <div class="sell-card">
         <h3>Mijozni tanlang</h3>
@@ -327,6 +333,8 @@ let allProducts  = [];
 let allCustomers = [];
 let editCustomerId = null;
 let editProductId  = null;
+let editSaleId = null;
+let editSaleOriginalItems = [];  // [{product_id, qty}] — editSale() ochilganda snapshot
 let lastSale   = null;
 const saleCache = {};
 
@@ -796,12 +804,45 @@ function restoreCartState(state) {
 
 function clearSale() {
   localStorage.removeItem('cart_state');
+  editSaleId = null;
+  editSaleOriginalItems = [];
+  document.getElementById('sell-edit-banner').style.display = 'none';
+  document.getElementById('sell-btn').innerHTML = '&#10003; Sotishni saqlash';
   document.getElementById('sell-customer-search').value = '';
   document.getElementById('sell-customer').value = '';
   document.getElementById('cart-rows').innerHTML = '';
   document.getElementById('last-sale-card').style.display = 'none';
   addCartRow();
   updateTotal();
+}
+
+function editSale(sale) {
+  const items = sale.items || sale.sale_items || [];
+  editSaleId = sale.id;
+  editSaleOriginalItems = items.map(i => ({ product_id: i.product_id, qty: i.qty }));
+
+  // Savatni cart_state formatida seed qilamiz — renderSell() o'zi tiklaydi
+  localStorage.setItem('cart_state', JSON.stringify({
+    customer: {
+      id: sale.customer_id,
+      search: sale.customer_name + ' (' + sale.customer_phone + ')',
+    },
+    rows: items.map(i => ({
+      id:     String(i.product_id),
+      name:   i.name,
+      price:  String(i.price),
+      qty:    String(i.qty),
+      maxqty: String((allProducts.find(p => p.id == i.product_id)?.qty || 0) + i.qty),
+    })),
+  }));
+
+  closeModal('modal-customer-history');
+  showPage('sell');
+
+  document.getElementById('sell-edit-id').textContent = sale.id;
+  document.getElementById('sell-edit-banner').style.display = 'block';
+  document.getElementById('sell-btn').innerHTML = '&#10003; Sotuvni yangilash';
+  document.getElementById('last-sale-card').style.display = 'none';
 }
 
 function addCartRow() {
@@ -902,6 +943,26 @@ function updateTotal() {
   saveCartState();
 }
 
+// Stok deltalarini product_id bo'yicha agregat hisoblab qo'llaydi.
+// originalItems — tahrirdan oldingi holat ([] bo'lsa yangi sotuv), newItems — yangi savat.
+async function reconcileStock(originalItems, newItems) {
+  const deltaMap = {}; // product_id -> stokka QAYTARILADIGAN miqdor (manfiy = ayirish)
+  originalItems.forEach(i => { deltaMap[i.product_id] = (deltaMap[i.product_id] || 0) + i.qty; });
+  newItems.forEach(i => { deltaMap[i.product_id] = (deltaMap[i.product_id] || 0) - i.qty; });
+
+  const affectedIds = Object.keys(deltaMap).map(Number).filter(id => deltaMap[id] !== 0);
+  if (!affectedIds.length) return;
+
+  const { data: prods, error } = await db.from('products').select('id,qty').in('id', affectedIds);
+  if (error) throw error;
+
+  for (const p of prods) {
+    const delta = deltaMap[p.id] || 0;
+    if (!delta) continue;
+    await db.from('products').update({ qty: p.qty + delta }).eq('id', p.id);
+  }
+}
+
 async function saveSale() {
   const custId = document.getElementById('sell-customer').value;
   if (!custId) { toast('Mijozni tanlang!', 'danger'); return; }
@@ -927,30 +988,52 @@ async function saveSale() {
 
     const total = items.reduce((s, i) => s + i.price * i.qty, 0);
 
-    const { data: sale, error: se } = await db.from('sales').insert({
+    const customerFields = {
       customer_id:      customer.id,
       customer_name:    customer.name,
       customer_phone:   customer.phone,
       customer_email:   customer.email   || '',
       customer_address: customer.address || '',
       total,
-    }).select().single();
-    if (se) throw se;
+    };
 
-    const { error: ie } = await db.from('sale_items').insert(
-      items.map(i => ({ sale_id: sale.id, product_id: i.product_id, name: i.name, price: i.price, qty: i.qty }))
-    );
-    if (ie) throw ie;
+    let sale;
+    if (editSaleId) {
+      // Mavjud sotuvni yangilash
+      const { data, error: se } = await db.from('sales').update(customerFields).eq('id', editSaleId).select().single();
+      if (se) throw se;
+      sale = data;
 
-    // Stokdan ayirish
-    for (const item of items) {
-      const prod = allProducts.find(p => p.id == item.product_id);
-      await db.from('products').update({ qty: prod.qty - item.qty }).eq('id', prod.id);
+      const { error: de } = await db.from('sale_items').delete().eq('sale_id', editSaleId);
+      if (de) throw de;
+      const { error: ie } = await db.from('sale_items').insert(
+        items.map(i => ({ sale_id: editSaleId, product_id: i.product_id, name: i.name, price: i.price, qty: i.qty }))
+      );
+      if (ie) throw ie;
+
+      await reconcileStock(editSaleOriginalItems, items);
+      toast('Sotuv yangilandi!', 'success');
+    } else {
+      // Yangi sotuv
+      const { data, error: se } = await db.from('sales').insert(customerFields).select().single();
+      if (se) throw se;
+      sale = data;
+
+      const { error: ie } = await db.from('sale_items').insert(
+        items.map(i => ({ sale_id: sale.id, product_id: i.product_id, name: i.name, price: i.price, qty: i.qty }))
+      );
+      if (ie) throw ie;
+
+      await reconcileStock([], items);
+      toast('Sotuv saqlandi!', 'success');
     }
+
+    editSaleId = null;
+    editSaleOriginalItems = [];
+    document.getElementById('sell-edit-banner').style.display = 'none';
 
     lastSale = { ...sale, items, customer_phone: customer.phone, customer_email: customer.email || '', customer_address: customer.address || '' };
     localStorage.removeItem('cart_state');
-    toast('Sotuv saqlandi!', 'success');
     renderSell();
     // Success kartasini ko'rsatish
     const card = document.getElementById('last-sale-card');
@@ -959,7 +1042,11 @@ async function saveSale() {
     document.getElementById('lsc-total').textContent = 'Jami: ' + fmt(sale.total);
     card.style.display = 'block';
   } catch(e) { toast(e.message, 'danger'); }
-  finally { btn.disabled = false; btn.innerHTML = '&#10003; Sotishni saqlash'; }
+  finally {
+    btn.disabled = false;
+    // Xato bo'lsa editSaleId hali ham o'rnatilgan — edit rejimda qoladi (retry mumkin)
+    btn.innerHTML = editSaleId ? '&#10003; Sotuvni yangilash' : '&#10003; Sotishni saqlash';
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1011,8 +1098,9 @@ async function showCustomerHistory(customerId, customerName) {
             <div style="font-size:.85rem;font-weight:600;color:var(--accent);">#${s.id}</div>
             <div class="history-meta">${new Date(s.created_at).toLocaleString('uz-UZ')}</div>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <span style="font-size:1rem;font-weight:700;color:var(--success);">${fmt(s.total)}</span>
+            <button class="btn btn-warning btn-sm" onclick="editSale(saleCache[${s.id}])">&#9998; Tahrirlash</button>
             <button class="btn btn-success btn-sm" onclick="downloadExcel(saleCache[${s.id}])">&#128202; Excel</button>
             <button class="btn btn-primary btn-sm" onclick="downloadPDF(saleCache[${s.id}])">&#128229; PDF</button>
           </div>
@@ -1048,6 +1136,7 @@ async function renderHistory() {
             <div class="history-meta">${new Date(s.created_at).toLocaleString('uz-UZ')}</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-warning btn-sm" onclick="editSale(saleCache[${s.id}])">&#9998; Tahrirlash</button>
             <button class="btn btn-success btn-sm" onclick="downloadExcel(saleCache[${s.id}])">&#128202; Excel</button>
             <button class="btn btn-primary btn-sm" onclick="downloadPDF(saleCache[${s.id}])">&#128229; PDF</button>
           </div>
